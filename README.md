@@ -31,7 +31,7 @@ import in your project.
   	return response, nil
   }
 ```
-###Important Note
+### Important Note
 Please kindly note that Amadeus has a 2nd Authentication header which is required in any call and you would add that header to your client when instantiation.
 ```
 uri := "your api url"	
