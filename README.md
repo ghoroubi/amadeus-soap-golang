@@ -6,6 +6,7 @@ Feel free to leave any comments and issues
 ## Installation
 go get github.com/ghoroubi/amadeus-soap-golang
 import in your project.
+
 `
 package min 
 import soap "github.com/ghoroubi/amadeus-go-soap"
