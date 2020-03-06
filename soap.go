@@ -1,14 +1,15 @@
 package amadeus_soap_golang
+
 import (
-"bytes"
-"crypto/tls"
-"encoding/xml"
-"io/ioutil"
-"log"
-"net"
-"net/http"
-"strings"
-"time"
+	"bytes"
+	"crypto/tls"
+	"encoding/xml"
+	"io/ioutil"
+	"log"
+	"net"
+	"net/http"
+	"strings"
+	"time"
 )
 
 // SOAPEnvelope , Root level of XML
@@ -21,7 +22,7 @@ type SOAPEnvelope struct {
 // SOAPHeader , generic soap header
 type SOAPHeader struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Header"`
-	
+
 	Items []interface{} `xml:",omitempty"`
 }
 
@@ -36,7 +37,7 @@ type AuthenticationSoapHeader struct {
 // SOAPBody , Soap body
 type SOAPBody struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
-	
+
 	Fault   *SOAPFault  `xml:",omitempty"`
 	Content interface{} `xml:",omitempty"`
 }
@@ -46,7 +47,7 @@ func (b *SOAPBody) UnmarshalXML(d *xml.Decoder, _ xml.StartElement) error {
 	if b.Content == nil {
 		return xml.UnmarshalError("Content must be a pointer to a struct")
 	}
-	
+
 	var (
 		token    xml.Token
 		err      error
@@ -58,11 +59,11 @@ Loop:
 		if token, err = d.Token(); err != nil {
 			return err
 		}
-		
+
 		if token == nil {
 			break
 		}
-		
+
 		switch se := token.(type) {
 		case xml.StartElement:
 			if consumed {
@@ -70,41 +71,42 @@ Loop:
 			} else if se.Name.Space == "http://schemas.xmlsoap.org/soap/envelope/" && se.Name.Local == "Fault" {
 				b.Fault = &SOAPFault{}
 				b.Content = nil
-				
+
 				err = d.DecodeElement(b.Fault, &se)
 				if err != nil {
 					return err
 				}
-				
+
 				consumed = true
 			} else {
 				if err = d.DecodeElement(b.Content, &se); err != nil {
 					return err
 				}
-				
+
 				consumed = true
 			}
 		case xml.EndElement:
 			break Loop
 		}
 	}
-	
+
 	return nil
 }
 
 // SOAPFault ...
 type SOAPFault struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Fault"`
-	Code   string `xml:"faultcode,omitempty"`
-	String string `xml:"faultstring,omitempty"`
-	Actor  string `xml:"faultactor,omitempty"`
-	Detail string `xml:"detail,omitempty"`
+	Code    string   `xml:"faultcode,omitempty"`
+	String  string   `xml:"faultstring,omitempty"`
+	Actor   string   `xml:"faultactor,omitempty"`
+	Detail  string   `xml:"detail,omitempty"`
 }
 
 // Error interface implementation
 func (f *SOAPFault) Error() string {
 	return f.String
 }
+
 // Predefined WSS namespaces to be used in
 const (
 	WssNsWSSE string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
@@ -114,27 +116,27 @@ const (
 
 // WSSSecurityHeader ...
 type WSSSecurityHeader struct {
-	XMLName   xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ wsse:Security"`
-	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
-	MustUnderstand string `xml:"mustUnderstand,attr,omitempty"`
-	Token *WSSUsernameToken `xml:",omitempty"`
+	XMLName        xml.Name          `xml:"http://schemas.xmlsoap.org/soap/envelope/ wsse:Security"`
+	XmlNSWsse      string            `xml:"xmlns:wsse,attr"`
+	MustUnderstand string            `xml:"mustUnderstand,attr,omitempty"`
+	Token          *WSSUsernameToken `xml:",omitempty"`
 }
 
 // WSSUsernameToken ...
 type WSSUsernameToken struct {
-	XMLName   xml.Name `xml:"wsse:UsernameToken"`
-	XmlNSWsu  string   `xml:"xmlns:wsu,attr"`
-	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
-	Id string `xml:"wsu:Id,attr,omitempty"`
-	Username *WSSUsername `xml:",omitempty"`
-	Password *WSSPassword `xml:",omitempty"`
+	XMLName   xml.Name     `xml:"wsse:UsernameToken"`
+	XmlNSWsu  string       `xml:"xmlns:wsu,attr"`
+	XmlNSWsse string       `xml:"xmlns:wsse,attr"`
+	Id        string       `xml:"wsu:Id,attr,omitempty"`
+	Username  *WSSUsername `xml:",omitempty"`
+	Password  *WSSPassword `xml:",omitempty"`
 }
 
 // WSSUsername ...
 type WSSUsername struct {
 	XMLName   xml.Name `xml:"wsse:Username"`
 	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
-	
+
 	Data string `xml:",chardata"`
 }
 
@@ -143,7 +145,7 @@ type WSSPassword struct {
 	XMLName   xml.Name `xml:"wsse:Password"`
 	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
 	XmlNSType string   `xml:"Type,attr"`
-	
+
 	Data string `xml:",chardata"`
 }
 
@@ -208,7 +210,7 @@ type Client struct {
 	url     string
 	opts    *options
 	headers []interface{}
-	Cookies *http.Cookie
+	Cookie  *http.Cookie
 }
 
 // NewClient creates new SOAP client instance
@@ -229,107 +231,112 @@ func (s *Client) AddHeader(header interface{}) {
 }
 
 // Call performs HTTP POST request
-func (s *Client) Call(soapAction string, request, response interface{}) error {
-	
+func (s *Client) Call(soapAction string, sessionID string, request, response interface{}) (string, error) {
+
 	envelope := SOAPEnvelope{}
 	if s.headers != nil && len(s.headers) > 0 {
 		soapHeader := &SOAPHeader{Items: make([]interface{}, len(s.headers))}
 		copy(soapHeader.Items, s.headers)
 		envelope.Header = soapHeader
 	}
-	
+
 	envelope.Body.Content = request
 	buffer := new(bytes.Buffer)
-	
+
 	encoder := xml.NewEncoder(buffer)
-	
+
 	if err := encoder.Encode(envelope); err != nil {
-		return err
+		return "", err
 	}
-	
+
 	if err := encoder.Flush(); err != nil {
-		return err
+		return "", err
 	}
-	
+
 	req, err := http.NewRequest("POST", s.url, buffer)
 	if err != nil {
-		return err
+		return "", err
 	}
-	
+
 	if s.opts.auth != nil {
 		req.SetBasicAuth(s.opts.auth.Login, s.opts.auth.Password)
 	}
-	
+
 	req.Header.Add("Content-Type", "text/xml; charset=\"utf-8\"")
 	req.Header.Add("SOAPAction", soapAction)
-	req.Header.Set("User-Agent", "gowsdl/0.1")
-	req.Header.Set("Host", "staging-ws.epower.amadeus.com")
-	
-	if s.Cookies != nil {
+	req.Header.Set("User-Agent", "ghoghnos/ghoroubi")
+	// req.Header.Set("Host", "staging-ws.epower.amadeus.com")
+
+	if sessionID != "" {
 		c := &http.Cookie{
-			Name:  s.Cookies.Name,
-			Value: s.Cookies.Value,}
-		req.Header.Set("cookie", c.String())
+			// Name:  s.Cookie.Name,
+			// Value: s.Cookie.Value,
+			Name:  "ASP.NET_SessionId",
+			Value: sessionID,
+		}
+		req.Header.Set("Cookie", c.String())
 	}
-	
+
 	if s.opts.httpHeaders != nil {
 		for k, v := range s.opts.httpHeaders {
 			req.Header.Set(k, v)
 		}
 	}
-	
+
 	req.Close = true
-	
+
 	tr := &http.Transport{
 		TLSClientConfig: s.opts.tlsCfg,
 		Dial: func(network, addr string) (net.Conn, error) {
 			return net.DialTimeout(network, addr, s.opts.timeout)
 		},
 	}
-	
+
 	client := &http.Client{
 		Transport: tr,
 	}
 	start := time.Now()
-	
+
 	res, err := client.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer res.Body.Close()
 	log.Printf("\nMethod=[Parsing raw response]\nResponse time:[%v] milliseconds\n", time.Now().Sub(start).Milliseconds())
-	if s.Cookies == nil && strings.Contains(soapAction, "/SearchFlight") && len(res.Cookies()) > 0 {
-		s.Cookies = res.Cookies()[0]
+	if s.Cookie == nil && len(res.Cookies()) > 0 {
+		s.Cookie = res.Cookies()[0]
 	}
-	
+
 	rawbody, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if len(rawbody) == 0 {
-		return nil
+		return "", err
 	}
-	
+
 	respEnvelope := new(SOAPEnvelope)
 	respEnvelope.Body = SOAPBody{Content: response}
 	err = xml.Unmarshal(rawbody, respEnvelope)
 	if err != nil {
-		return err
+		return "", err
 	}
-	
+
 	fault := respEnvelope.Body.Fault
 	if fault != nil {
-		return fault
+		return "", fault
 	}
-	
-	return nil
+
+	if len(res.Cookies()) > 0 {
+		return getSessionId(res.Cookies()[0].Value), nil
+	}
+	return sessionID, nil
+
 }
 
 func getSessionId(cookie string) string {
 	// ASP.NET_SessionId=moxuzygi33fiqqd5opjffmyy; path=/; secure; HttpOnly
 	parts := strings.Split(cookie, ";")
 	t := strings.Split(parts[0], "=")
-	return t[1]
-	
+	return t[len(t)-1]
 }
-
